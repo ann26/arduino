@@ -1,34 +1,65 @@
-// I used an arduino uno v3 here
-//
-
-// LCD stuff
 #include <LiquidCrystal_I2C.h>
-
-// Include the libraries we need
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include "Arduino.h"
+
+class Ultrasonic
+{
+  public:
+    Ultrasonic(int pin);
+    void DistanceMeasure(void);
+    long microsecondsToCentimeters(void);
+  private:
+    int _pin; //pin number of Arduino that is connected with SIG pin of Ultrasonic Ranger.
+    long duration; // the Pulse time received;
+};
+
+Ultrasonic::Ultrasonic(int pin)
+{
+  _pin = pin;
+}
+
+/*Begin the detection and get the pulse back signal*/
+void Ultrasonic::DistanceMeasure(void)
+{
+  pinMode(_pin, OUTPUT);
+  digitalWrite(_pin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(_pin, HIGH);
+  delayMicroseconds(5);
+  digitalWrite(_pin,LOW);
+  pinMode(_pin,INPUT);
+  duration = pulseIn(_pin,HIGH);
+}
+/*The measured distance from the range 0 to 400 Centimeters*/
+long Ultrasonic::microsecondsToCentimeters(void)
+{
+  return duration/29/2;
+}
 
 
 // Data wire is plugged into port 2 on the Arduino
 #define ONE_WIRE_BUS 2
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 OneWire oneWire(ONE_WIRE_BUS);
-// Pass our oneWire reference to Dallas Temperature. 
+// Pass our oneWire reference to Dallas Temperature.
 DallasTemperature sensors(&oneWire);
+
 int RED_LED = 8;
 int YELLOW_LED = 9;
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
+Ultrasonic ultrasonic(10);
+float BASELINE_DISTANCE = 0.0;
+long DISTANCE_CHANGE_COUNT = 0;
+float TOLERANCE = 200.0; //allow for cm variations in distance without triggering
 
 void setup(void)
 {
   // start serial port
   Serial.begin(9600);
-  Serial.println("Dallas Temperature IC Control Library Demo");
   pinMode(RED_LED, OUTPUT);
   pinMode(YELLOW_LED, OUTPUT);
-  // Start up the library
   sensors.begin();
-
   lcd.begin(16,2);   // initialize the lcd for 16 chars 2 lines, turn on backlight
 
   // ------- Quick 3 blinks of backlight  -------------
@@ -39,33 +70,70 @@ void setup(void)
     lcd.noBacklight();
     delay(250);
   }
-  lcd.backlight(); // finish with backlight on  
+  lcd.backlight(); // finish with backlight on
   lcd.setCursor(0,0); //Start at character 4 on line 0
-  lcd.print("Hello, world!");
+  lcd.print("Initialising baseline distance...");
+  float baseline = 0;
+  double repeats = 10;
+  // Get the baseline distance by taking a bunch of measurements
+  for (int i = 0; i < repeats; i++)
+  {
+
+    ultrasonic.DistanceMeasure(); // get the current signal time;
+    long distance = ultrasonic.microsecondsToCentimeters();//convert the time to centimeters
+    baseline += distance;
+    delay(100);
+  }
+  BASELINE_DISTANCE = baseline / repeats;
+  lcd.clear();
+  lcd.print("Baseline: ");
+  lcd.print(BASELINE_DISTANCE);
+  delay(3000);
+  
 }
 
 void loop(void)
-{ 
+{
+  
+  ultrasonic.DistanceMeasure();// get the current signal time;
+  long rangeCM = ultrasonic.microsecondsToCentimeters();//convert the time to centimeters
+
   sensors.requestTemperatures(); // Send the command to get temperatures
   float temp = sensors.getTempCByIndex(0);
-  lcd.clear();
-  lcd.print(temp);
-  Serial.println(temp);
+
+  delay(1);   //ms
+  if ( abs(rangeCM - BASELINE_DISTANCE) > TOLERANCE)
+  {
+    DISTANCE_CHANGE_COUNT += 1;
+    Serial.print("Count: ");
+    Serial.println(DISTANCE_CHANGE_COUNT);
+    digitalWrite(RED_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
+    digitalWrite(YELLOW_LED, LOW);   // turn the LED off (LOW is the voltage level)
+
+    lcd.clear();
+    lcd.print(temp);
+    lcd.setCursor(0, 1);  //col, row
+    lcd.print(DISTANCE_CHANGE_COUNT);
+    lcd.print(" (");
+    lcd.print(rangeCM - BASELINE_DISTANCE);
+    lcd.print(")");
+  }
+
   if ( temp > 30.0 )
   {
     lcd.backlight();
     digitalWrite(RED_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
-    digitalWrite(YELLOW_LED, LOW);   // turn the LED off (LOW is the voltage level) 
+    digitalWrite(YELLOW_LED, LOW);   // turn the LED off (LOW is the voltage level)
   }
   else if (temp == 30.00)
    {
-    digitalWrite(RED_LED, HIGH);   // turn the LED off (LOW is the voltage level) 
+    digitalWrite(RED_LED, HIGH);   // turn the LED off (LOW is the voltage level)
     digitalWrite(YELLOW_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
   }
   else
   {
     lcd.noBacklight();
-    digitalWrite(RED_LED, LOW);   // turn the LED off (LOW is the voltage level) 
+    digitalWrite(RED_LED, LOW);   // turn the LED off (LOW is the voltage level)
     digitalWrite(YELLOW_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
   }
   delay(1000);
