@@ -27,14 +27,14 @@ void Ultrasonic::DistanceMeasure(void)
   delayMicroseconds(2);
   digitalWrite(_pin, HIGH);
   delayMicroseconds(5);
-  digitalWrite(_pin,LOW);
-  pinMode(_pin,INPUT);
-  duration = pulseIn(_pin,HIGH);
+  digitalWrite(_pin, LOW);
+  pinMode(_pin, INPUT);
+  duration = pulseIn(_pin, HIGH);
 }
 /*The measured distance from the range 0 to 400 Centimeters*/
 long Ultrasonic::microsecondsToCentimeters(void)
 {
-  return duration/29/2;
+  return duration / 29 / 2;
 }
 
 
@@ -49,9 +49,9 @@ int RED_LED = 8;
 int YELLOW_LED = 9;
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
 Ultrasonic ultrasonic(10);
-float BASELINE_DISTANCE = 0.0;
+long BASELINE_DISTANCE = 0.0;
 long DISTANCE_CHANGE_COUNT = 0;
-float TOLERANCE = 200.0; //allow for cm variations in distance without triggering
+long TOLERANCE = 20; //allow for cm variations in distance without triggering
 
 void setup(void)
 {
@@ -60,10 +60,10 @@ void setup(void)
   pinMode(RED_LED, OUTPUT);
   pinMode(YELLOW_LED, OUTPUT);
   sensors.begin();
-  lcd.begin(16,2);   // initialize the lcd for 16 chars 2 lines, turn on backlight
+  lcd.begin(16, 2);  // initialize the lcd for 16 chars 2 lines, turn on backlight
 
   // ------- Quick 3 blinks of backlight  -------------
-  for(int i = 0; i< 3; i++)
+  for (int i = 0; i < 3; i++)
   {
     lcd.backlight();
     delay(250);
@@ -71,38 +71,28 @@ void setup(void)
     delay(250);
   }
   lcd.backlight(); // finish with backlight on
-  lcd.setCursor(0,0); //Start at character 4 on line 0
+  lcd.setCursor(0, 0); //Start at character 4 on line 0
   lcd.print("Initialising baseline distance...");
-  float baseline = 0;
-  double repeats = 10;
-  // Get the baseline distance by taking a bunch of measurements
-  for (int i = 0; i < repeats; i++)
-  {
-
-    ultrasonic.DistanceMeasure(); // get the current signal time;
-    long distance = ultrasonic.microsecondsToCentimeters();//convert the time to centimeters
-    baseline += distance;
-    delay(100);
-  }
-  BASELINE_DISTANCE = baseline / repeats;
+  delay(3000);
+  ultrasonic.DistanceMeasure();// get the current signal time;
+  BASELINE_DISTANCE = ultrasonic.microsecondsToCentimeters();
   lcd.clear();
   lcd.print("Baseline: ");
   lcd.print(BASELINE_DISTANCE);
   delay(3000);
-  
 }
 
 void loop(void)
 {
-  
+
   ultrasonic.DistanceMeasure();// get the current signal time;
-  long rangeCM = ultrasonic.microsecondsToCentimeters();//convert the time to centimeters
+  long range_in_cm = ultrasonic.microsecondsToCentimeters();//convert the time to centimeters
 
   sensors.requestTemperatures(); // Send the command to get temperatures
   float temp = sensors.getTempCByIndex(0);
 
   delay(1);   //ms
-  if ( abs(rangeCM - BASELINE_DISTANCE) > TOLERANCE)
+  if ((BASELINE_DISTANCE - TOLERANCE) > range_in_cm)
   {
     DISTANCE_CHANGE_COUNT += 1;
     Serial.print("Count: ");
@@ -115,7 +105,7 @@ void loop(void)
     lcd.setCursor(0, 1);  //col, row
     lcd.print(DISTANCE_CHANGE_COUNT);
     lcd.print(" (");
-    lcd.print(rangeCM - BASELINE_DISTANCE);
+    lcd.print(BASELINE_DISTANCE - range_in_cm);
     lcd.print(")");
   }
 
@@ -126,7 +116,7 @@ void loop(void)
     digitalWrite(YELLOW_LED, LOW);   // turn the LED off (LOW is the voltage level)
   }
   else if (temp == 30.00)
-   {
+  {
     digitalWrite(RED_LED, HIGH);   // turn the LED off (LOW is the voltage level)
     digitalWrite(YELLOW_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
   }
