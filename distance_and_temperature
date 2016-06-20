@@ -37,21 +37,28 @@ long Ultrasonic::microsecondsToCentimeters(void)
   return duration / 29 / 2;
 }
 
-
 // Data wire is plugged into port 2 on the Arduino
 #define ONE_WIRE_BUS 2
-// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temp_celciuserature ICs)
 OneWire oneWire(ONE_WIRE_BUS);
-// Pass our oneWire reference to Dallas Temperature.
+// Pass our oneWire reference to Dallas temp_celciuserature.
 DallasTemperature sensors(&oneWire);
 
 int RED_LED = 8;
 int YELLOW_LED = 9;
-LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
+// Set the LCD I2C address
+LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  
 Ultrasonic ultrasonic(10);
 long BASELINE_DISTANCE = 0.0;
 long DISTANCE_CHANGE_COUNT = 0;
-long TOLERANCE = 20; //allow for cm variations in distance without triggering
+//allow for cm variations in distance without triggering
+long TOLERANCE = 20; 
+// maximum distance sensor can detect in cm
+long MAX_DISTANCE = 551;
+// used for keeping track of the last recorded temperature 
+float LAST_TEMP = 0.0;
+// used for keeping track of the last recorded distance
+double LAST_DISTANCE = 0;
 
 void setup(void)
 {
@@ -72,50 +79,92 @@ void setup(void)
   }
   lcd.backlight(); // finish with backlight on
   lcd.setCursor(0, 0); //Start at character 4 on line 0
-  lcd.print("Initialising baseline distance...");
+  lcd.print("Initialising");
+  lcd.setCursor(0, 1);  //col, row
+  lcd.print("distance...");
   delay(3000);
   ultrasonic.DistanceMeasure();// get the current signal time;
   BASELINE_DISTANCE = ultrasonic.microsecondsToCentimeters();
   lcd.clear();
   lcd.print("Baseline: ");
   lcd.print(BASELINE_DISTANCE);
+  lcd.print("cm");
   delay(3000);
 }
 
 void loop(void)
 {
+  // get the current signal time;
+  ultrasonic.DistanceMeasure();
+  //convert the time to centimeters
+  long range_in_cm = ultrasonic.microsecondsToCentimeters();
+  // Send the command to get temperature
+  sensors.requestTemperatures(); 
+  float temp_celcius = sensors.getTempCByIndex(0);
 
-  ultrasonic.DistanceMeasure();// get the current signal time;
-  long range_in_cm = ultrasonic.microsecondsToCentimeters();//convert the time to centimeters
-
-  sensors.requestTemperatures(); // Send the command to get temperatures
-  float temp = sensors.getTempCByIndex(0);
-
-  delay(1);   //ms
-  if ((BASELINE_DISTANCE - TOLERANCE) > range_in_cm)
+  // short circuit if there is no status change
+  if (( temp_celcius == LAST_TEMP) && ( range_in_cm == LAST_DISTANCE ))
+  {
+    // do nothing - avoid doing any other processing to reduce
+    // latency
+  }
+  else if (
+    ((BASELINE_DISTANCE - TOLERANCE) > range_in_cm) && 
+    (range_in_cm < MAX_DISTANCE))
   {
     DISTANCE_CHANGE_COUNT += 1;
     Serial.print("Count: ");
     Serial.println(DISTANCE_CHANGE_COUNT);
-    digitalWrite(RED_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
-    digitalWrite(YELLOW_LED, LOW);   // turn the LED off (LOW is the voltage level)
-
-    lcd.clear();
-    lcd.print(temp);
-    lcd.setCursor(0, 1);  //col, row
-    lcd.print(DISTANCE_CHANGE_COUNT);
-    lcd.print(" (");
-    lcd.print(BASELINE_DISTANCE - range_in_cm);
-    lcd.print(")");
+    show_movement_leds();
+    update_display(temp_celcius, range_in_cm);
+  } 
+  else
+  {
+    update_display(temp_celcius, range_in_cm);
+    // to reduce latency we will only update temperature leds
+    // if there was no movement change
+    show_temperature_leds(temp_celcius);
   }
+  LAST_TEMP = temp_celcius;
+  LAST_DISTANCE = range_in_cm;
+}
 
-  if ( temp > 30.0 )
+void update_display(float temp_celcius, double distance_cm)
+{
+  lcd.clear();
+  lcd.print(temp_celcius);
+  lcd.print(" degrees");
+  lcd.setCursor(0, 1);  //col, row
+  lcd.print(DISTANCE_CHANGE_COUNT);
+  lcd.print(" (");
+  lcd.print(distance_cm);
+  lcd.print(" cm)");
+}
+
+/* Provide some visual feedback when a movement has been
+ *  detected by the distance sensor.
+ */
+void show_movement_leds()
+{
+  // turn the LED on (HIGH is the voltage level)
+  digitalWrite(RED_LED, HIGH);   
+  // turn the LED off (LOW is the voltage level)
+  digitalWrite(YELLOW_LED, LOW);   
+}
+
+/* Show status indicators using leds if the
+ *  temperature has changed between different thresholds.
+ */
+void show_temperature_leds(float temp_celcius)
+{
+  float threshold = 30.0; //degrees celcius
+  if ( temp_celcius > threshold )
   {
     lcd.backlight();
     digitalWrite(RED_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
     digitalWrite(YELLOW_LED, LOW);   // turn the LED off (LOW is the voltage level)
   }
-  else if (temp == 30.00)
+  else if (temp_celcius == threshold)
   {
     digitalWrite(RED_LED, HIGH);   // turn the LED off (LOW is the voltage level)
     digitalWrite(YELLOW_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
@@ -126,5 +175,4 @@ void loop(void)
     digitalWrite(RED_LED, LOW);   // turn the LED off (LOW is the voltage level)
     digitalWrite(YELLOW_LED, HIGH);   // turn the LED on (HIGH is the voltage level)
   }
-  delay(1000);
 }
