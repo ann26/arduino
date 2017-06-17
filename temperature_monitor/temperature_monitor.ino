@@ -75,7 +75,7 @@ void loop(void)
   else
   {
   if (temp_celcius < LOWEST) LOWEST = temp_celcius;
-  if (temp_celcius < HIGHEST) HIGHEST = temp_celcius;
+  if (temp_celcius > HIGHEST) HIGHEST = temp_celcius;
   SUM += temp_celcius;
   COUNT += 1;
   AVERAGE = SUM / COUNT;
